@@ -130,9 +130,12 @@ export {
   lowTrustBoundarySchema,
   lowTrustReviewPresetPolicySchema,
   trustAuthorizationPolicySchema,
+  sourceTrustArtifactKindSchema,
+  sourceTrustMetadataSchema,
   type TrustPresetInput,
   type LowTrustBoundaryInput,
   type TrustAuthorizationPolicyInput,
+  type SourceTrustMetadataInput,
 } from "./trust-policy.js";
 
 export {
