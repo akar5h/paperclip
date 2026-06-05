@@ -265,6 +265,44 @@ async function buildClaudeRuntimeConfig(input: ClaudeExecutionInput): Promise<Cl
     if (typeof value === "string") env[key] = value;
   }
 
+  // Live OTel emit (Paperclip XER-69 / XER-75 full run_context parity).
+  //
+  // The adapter owns the entire telemetry env: `adapterConfig.env` cannot
+  // deliver these. On the claude_local path the only env that survives is the
+  // string-valued `shapedEnvConfig` merge above; object/binding telemetry
+  // config never resolves to strings, so a config-only approach is inert.
+  // Setting the keys here is the single source of truth.
+  //
+  // Resource attributes carry the same provenance as the offline
+  // PaperclipNormalizer envelope so live spans and backfilled spans are
+  // attributable to the same run. `service.name` uses `agent.id` (AdapterAgent
+  // exposes no url key); `paperclip.project_id` is intentionally deferred —
+  // it is not present on AdapterAgent in this scope.
+  //
+  // Non-blocking by construction: Claude Code exports via OTel
+  // BatchSpanProcessor on a background thread with disk-queued retry, and the
+  // endpoint defaults to a local collector, so a down/absent backend cannot
+  // stall or fail an agent run. Any operator-provided OTEL_* string in
+  // `shapedEnvConfig` (e.g. a custom endpoint) is respected via `|| `.
+  env.CLAUDE_CODE_ENABLE_TELEMETRY = "1";
+  // Claude Code emits trace spans only when the enhanced-telemetry beta is on;
+  // without this the exporter is configured but no spans are produced.
+  env.CLAUDE_CODE_ENHANCED_TELEMETRY_BETA = "1";
+  env.OTEL_TRACES_EXPORTER = "otlp";
+  env.OTEL_METRICS_EXPORTER = "none";
+  env.OTEL_LOGS_EXPORTER = "none";
+  env.OTEL_EXPORTER_OTLP_PROTOCOL = "http/protobuf";
+  env.OTEL_EXPORTER_OTLP_ENDPOINT = env.OTEL_EXPORTER_OTLP_ENDPOINT || "http://localhost:4318";
+  env.OTEL_RESOURCE_ATTRIBUTES = [
+    `service.name=paperclip-claude-${agent.id}`,
+    `paperclip.company_id=${agent.companyId}`,
+    `paperclip.agent_id=${agent.id}`,
+    `paperclip.run_id=${runId}`,
+    wakeTaskId ? `paperclip.issue=${wakeTaskId}` : null,
+  ]
+    .filter(Boolean)
+    .join(",");
+
   if (!hasExplicitApiKey && authToken) {
     env.PAPERCLIP_API_KEY = authToken;
   }
